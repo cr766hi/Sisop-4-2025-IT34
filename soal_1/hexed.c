@@ -1,172 +1,237 @@
+#define FUSE_USE_VERSION 30
+#include <fuse.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
-#include <time.h>
-#include <sys/stat.h>
 #include <unistd.h>
+#include <fcntl.h>
 #include <dirent.h>
-#include <ctype.h>
+#include <errno.h>
+#include <sys/time.h>
+#include <time.h>
+#include <stdlib.h>
 #include <libgen.h>
+#include <limits.h>
 
-void log_conversion(const char *log_path, const char *text_filename, const char *image_filename) {
-    time_t now = time(NULL);
-    struct tm *t = localtime(&now);
+static const char *doc_dirpath = "/home/na-ux315/Documents";
+static const char *dl_dirpath = "/home/na-ux315/Downloads";
+
+// Function to reverse a string (excluding extension)
+static char *reverse_string(char *str) {
+    if (!str) return NULL;
     
-    FILE *log_file = fopen(log_path, "a");
-    if (log_file) {
-        fprintf(log_file, 
-               "[%04d-%02d-%02d][%02d:%02d:%02d]: Successfully converted %s to %s.\n",
-               t->tm_year + 1900, t->tm_mon + 1, t->tm_mday,
-               t->tm_hour, t->tm_min, t->tm_sec,
-               text_filename, image_filename);
-        fclose(log_file);
+    char *dot = strrchr(str, '.');
+    int len = dot ? (int)(dot - str) : (int)strlen(str);
+    
+    for (int i = 0, j = len - 1; i < j; i++, j--) {
+        char temp = str[i];
+        str[i] = str[j];
+        str[j] = temp;
     }
+    return str;
 }
 
-int is_valid_hex(const char *str, size_t len) {
-    for (size_t i = 0; i < len; i++) {
-        if (!isxdigit(str[i])) {
-            return 0;
-        }
-    }
-    return 1;
+// Function to log access to downloads folder
+static void write_log(const char *path) {
+    if (!path) return;
+
+    FILE *logfile = fopen("conversion.log", "a");
+    if (!logfile) return;
+
+    time_t now;
+    time(&now);
+    struct tm *tm = localtime(&now);
+
+    char month[4];
+    strftime(month, sizeof(month), "%b", tm);
+
+    char day[4];
+    strftime(day, sizeof(day), "%a", tm);
+
+    fprintf(logfile, "%.3s %.3s%3d %.2d:%.2d:%.2d %d: %s\n",
+            day, month, tm->tm_mday,
+            tm->tm_hour, tm->tm_min, tm->tm_sec,
+            tm->tm_year + 1900, path);
+
+    fclose(logfile);
 }
 
-int convert_hex_to_image(const char *input_path, const char *output_dir, const char *log_path) {
-    FILE *input_file = fopen(input_path, "r");
-    if (!input_file) {
-        perror("Error opening input file");
-        return 0;
-    }
-
-    fseek(input_file, 0, SEEK_END);
-    long file_size = ftell(input_file);
-    fseek(input_file, 0, SEEK_SET);
-
-    if (file_size % 2 != 0) {
-        fclose(input_file);
-        fprintf(stderr, "Error: Hex data must have even number of characters\n");
-        return 0;
-    }
-
-    char *hex_data = malloc(file_size + 1);
-    if (!hex_data) {
-        fclose(input_file);
-        return 0;
-    }
-    fread(hex_data, 1, file_size, input_file);
-    hex_data[file_size] = '\0';
-    fclose(input_file);
-
-    // Validate hex content
-    if (!is_valid_hex(hex_data, file_size)) {
-        free(hex_data);
-        fprintf(stderr, "Error: Invalid hexadecimal data\n");
-        return 0;
-    }
-
-    long binary_size = file_size / 2;
-    unsigned char *binary_data = malloc(binary_size);
-    if (!binary_data) {
-        free(hex_data);
-        return 0;
-    }
-
-    for (long i = 0; i < binary_size; i++) {
-        if (sscanf(hex_data + i * 2, "%2hhx", &binary_data[i]) != 1) {
-            free(hex_data);
-            free(binary_data);
-            return 0;
-        }
-    }
-
-    mkdir(output_dir, 0755);
-
-    time_t now = time(NULL);
-    struct tm *t = localtime(&now);
-    
-    char *base_name = basename(strdup(input_path));
+// Function to log convert hex to image and log conversion
+static void convert_and_log(const char *txt_path, const char *hex_data, size_t data_size) {
+    // Generate output filename
+    char img_path[PATH_MAX];
+    char *base_name = basename(strdup(txt_path));
     char *dot = strrchr(base_name, '.');
-    if (dot) *dot = '\0';
+    if (dot) *dot = '\0';  // Remove extension
     
-    char output_filename[512];
-    snprintf(output_filename, sizeof(output_filename),
-             "%s/%s_image_%04d-%02d-%02d_%02d:%02d:%02d.png",
-             output_dir,
+    time_t now = time(NULL);
+    struct tm *tm = localtime(&now);
+    
+    snprintf(img_path, sizeof(img_path), "image/%s_image_%04d-%02d-%02d_%02d:%02d:%02d.png",
              base_name,
-             t->tm_year + 1900, t->tm_mon + 1, t->tm_mday,
-             t->tm_hour, t->tm_min, t->tm_sec);
-
-    FILE *output_file = fopen(output_filename, "wb");
-    if (!output_file) {
-        free(hex_data);
-        free(binary_data);
-        return 0;
-    }
+             tm->tm_year + 1900, tm->tm_mon + 1, tm->tm_mday,
+             tm->tm_hour, tm->tm_min, tm->tm_sec);
     
-    fwrite(binary_data, 1, binary_size, output_file);
-    fclose(output_file);
-
-    log_conversion(log_path, base_name, output_filename);
-
-    free(hex_data);
-    free(binary_data);
-    return 1;
-}
-
-void process_directory(const char *dir_path) {
-    printf("Processing directory: %s\n", dir_path);
+    // Create image directory if not exists
+    mkdir("image", 0755);
     
-    char image_dir[512];
-    char log_path[512];
-    snprintf(image_dir, sizeof(image_dir), "%s/image", dir_path);
-    snprintf(log_path, sizeof(log_path), "%s/conversion.log", dir_path);
-
-    FILE *log = fopen(log_path, "w");
-    if (log) fclose(log);
-
-    DIR *dir = opendir(dir_path);
-    if (!dir) {
-        perror("Error opening directory");
-        return;
-    }
-
-    struct dirent *entry;
-    while ((entry = readdir(dir)) != NULL) {
-        if (entry->d_type == DT_REG) {
-            char *ext = strrchr(entry->d_name, '.');
-            if (ext && strcmp(ext, ".txt") == 0) {
-                char full_path[512];
-                snprintf(full_path, sizeof(full_path), "%s/%s", dir_path, entry->d_name);
-                printf("Converting: %s\n", entry->d_name);
-                if (!convert_hex_to_image(full_path, image_dir, log_path)) {
-                    fprintf(stderr, "Failed to convert: %s\n", entry->d_name);
-                }
-            }
+    // Write image file (actual conversion would go here)
+    FILE *img = fopen(img_path, "wb");
+    if (img) {
+        fwrite(hex_data, 1, data_size, img);
+        fclose(img);
+        
+        // Log conversion
+        FILE *log = fopen("conversion.log", "a");
+        if (log) {
+            fprintf(log, "[%04d-%02d-%02d][%02d:%02d:%02d]: Successfully converted hexadecimal text %s to %s.\n",
+                    tm->tm_year + 1900, tm->tm_mon + 1, tm->tm_mday,
+                    tm->tm_hour, tm->tm_min, tm->tm_sec,
+                    base_name, img_path);
+            fclose(log);
         }
     }
-    closedir(dir);
+    free(base_name);
 }
 
-int main() {
-    process_directory("anomali");
-    process_directory("mnt");
+// Common getattr function
+static int common_getattr(const char *base_path, const char *path, struct stat *stbuf) {
+    char fpath[1024];
+    snprintf(fpath, sizeof(fpath), "%s%s", base_path, path);
+    int res = lstat(fpath, stbuf);
+    return (res == -1) ? -errno : 0;
+}
 
-    DIR *curr_dir = opendir(".");
-    if (curr_dir) {
-        struct dirent *entry;
-        while ((entry = readdir(curr_dir)) != NULL) {
-            if (entry->d_type == DT_REG) {
-                char *ext = strrchr(entry->d_name, '.');
-                if (ext && strcmp(ext, ".zip") == 0) {
-                    remove(entry->d_name);
-                    printf("Removed zip file: %s\n", entry->d_name);
-                }
-            }
+// Documents filesystem operations (with filename reversal)
+static int doc_getattr(const char *path, struct stat *stbuf, struct fuse_file_info *fi) {
+    (void)fi;
+    return common_getattr(doc_dirpath, path, stbuf);
+}
+
+static int doc_readdir(const char *path, void *buf, fuse_fill_dir_t filler, 
+                      off_t offset, struct fuse_file_info *fi, 
+                      enum fuse_readdir_flags flags) {
+    (void)offset;
+    (void)fi;
+    (void)flags;
+    
+    char fpath[1024];
+    snprintf(fpath, sizeof(fpath), "%s%s", doc_dirpath, path);
+
+    DIR *dp = opendir(fpath);
+    if (!dp) return -errno;
+
+    struct dirent *de;
+    int is_adfi = (strstr(path, "Adfi_") != NULL);
+    
+    while ((de = readdir(dp)) != NULL) {
+        struct stat st = {0};
+        st.st_ino = de->d_ino;
+        st.st_mode = de->d_type << 12;
+
+        char *dname = strdup(de->d_name);
+        if (!dname) continue;
+        
+        if (is_adfi && de->d_type == DT_REG) {
+            reverse_string(dname);
         }
-        closedir(curr_dir);
-    }
 
-    printf("Conversion process completed.\n");
+        if (filler(buf, dname, &st, 0, 0)) {
+            free(dname);
+            break;
+        }
+        free(dname);
+    }
+    
+    closedir(dp);
     return 0;
+}
+
+static int doc_read(const char *path, char *buf, size_t size, off_t offset,
+                   struct fuse_file_info *fi) {
+    (void)fi;
+    
+    char fpath[1024];
+    snprintf(fpath, sizeof(fpath), "%s%s", doc_dirpath, path);
+    
+    int fd = open(fpath, O_RDONLY);
+    if (fd == -1) return -errno;
+    
+    int res = pread(fd, buf, size, offset);
+    if (res == -1) res = -errno;
+    
+    close(fd);
+    return res;
+}
+
+// Downloads filesystem operations (with logging)
+static int dl_getattr(const char *path, struct stat *stbuf, struct fuse_file_info *fi) {
+    (void)fi;
+    return common_getattr(dl_dirpath, path, stbuf);
+}
+
+static int dl_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
+                     off_t offset, struct fuse_file_info *fi,
+                     enum fuse_readdir_flags flags) {
+    (void)offset;
+    (void)fi;
+    (void)flags;
+    
+    write_log(path);
+
+    char fpath[1024];
+    snprintf(fpath, sizeof(fpath), "%s%s", dl_dirpath, path);
+
+    DIR *dp = opendir(fpath);
+    if (!dp) return -errno;
+
+    struct dirent *de;
+    while ((de = readdir(dp)) != NULL) {
+        struct stat st = {0};
+        st.st_ino = de->d_ino;
+        st.st_mode = de->d_type << 12;
+        
+        if (filler(buf, de->d_name, &st, 0, 0)) break;
+    }
+    
+    closedir(dp);
+    return 0;
+}
+
+static int dl_read(const char *path, char *buf, size_t size, off_t offset,
+                  struct fuse_file_info *fi) {
+    (void)fi;
+    
+    char fpath[1024];
+    snprintf(fpath, sizeof(fpath), "%s%s", dl_dirpath, path);
+    
+    int fd = open(fpath, O_RDONLY);
+    if (fd == -1) return -errno;
+    
+    int res = pread(fd, buf, size, offset);
+    if (res == -1) res = -errno;
+    
+    close(fd);
+    return res;
+}
+
+static struct fuse_operations doc_oper = {
+    .getattr = doc_getattr,
+    .readdir = doc_readdir,
+    .read = doc_read,
+};
+
+static struct fuse_operations dl_oper = {
+    .getattr = dl_getattr,
+    .readdir = dl_readdir,
+    .read = dl_read,
+};
+
+int main(int argc, char *argv[]) {
+    umask(0);
+    
+    if (argc > 1 && strcmp(argv[1], "-downloads") == 0) {
+        argv[1] = argv[0];
+        return fuse_main(argc - 1, argv + 1, &dl_oper, NULL);
+    }
+    return fuse_main(argc, argv, &doc_oper, NULL);
 }
