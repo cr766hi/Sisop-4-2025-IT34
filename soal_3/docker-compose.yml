@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  antink-server:
+    build: .
+    container_name: soal_3-antink-server
+    privileged: true
+    devices:
+      - /dev/fuse:/dev/fuse
+    cap_add:
+      - SYS_ADMIN
+    security_opt:
+      - apparmor:unconfined
+    volumes:
+      - ./it24_host:/it24_host:ro
+      - ./antink_mount:/antink_mount
+      - ./antink-logs:/var/log
+    restart: unless-stopped
+    command: bash -c "/app/antink /antink_mount & tail -f /dev/null"
+
+  antink-logger:
+    image: ubuntu:latest
+    container_name: soal_3-antink-logger
+    depends_on:
+      - antink-server
+    volumes:
+      - ./antink-logs:/var/log
+    command: bash -c "while [ ! -f /var/log/it24.log ]; do sleep 1; done; tail -f /var/log/it24.log"
