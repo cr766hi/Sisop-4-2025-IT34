@@ -15,7 +15,6 @@
 static const char *it24_host_path = "/it24_host";
 static const char *log_path = "/var/log/it24.log";
 
-// Fungsi untuk membalik string
 char* strrev(char* str) {
     if (!str || !*str) return str;
     
@@ -42,17 +41,15 @@ void rot13(char *str) {
     }
 }
 
-// Fungsi untuk mengecek apakah file berbahaya
 int is_dangerous(const char *filename) {
     return strstr(filename, "nafis") || strstr(filename, "kimcun");
 }
 
-// Fungsi untuk menulis log
 void write_log(const char *message, const char *filename) {
     time_t now;
     time(&now);
     char *time_str = ctime(&now);
-    time_str[strlen(time_str)-1] = '\0'; // remove newline
+    time_str[strlen(time_str)-1] = '\0'; 
     
     FILE *log_file = fopen(log_path, "a");
     if (log_file) {
@@ -61,7 +58,6 @@ void write_log(const char *message, const char *filename) {
     }
 }
 
-// Implementasi FUSE operations
 static int antink_getattr(const char *path, struct stat *stbuf) {
     char full_path[1024];
     sprintf(full_path, "%s%s", it24_host_path, path);
@@ -122,10 +118,8 @@ static int antink_read(const char *path, char *buf, size_t size, off_t offset,
     int res = pread(fd, buf, size, offset);
     if (res == -1) res = -errno;
     
-    // Cek ekstensi file .txt
     const char *ext = strrchr(path, '.');
     if (ext && strcmp(ext, ".txt") == 0) {
-        // Jika bukan file berbahaya, enkripsi ROT13
         if (!is_dangerous(path)) {
             rot13(buf);
         } else {
@@ -145,7 +139,6 @@ static struct fuse_operations antink_oper = {
 };
 
 int main(int argc, char *argv[]) {
-    // Inisialisasi log file
     FILE *log_file = fopen(log_path, "a");
     if (log_file) {
         fclose(log_file);
