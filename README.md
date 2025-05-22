@@ -358,13 +358,23 @@ int main(int argc, char *argv[]) {
     return fuse_main(argc, argv, &doc_oper, NULL);
 }
 ```
+Kita compile filenya dan ubah permission dengan
+
+```bash
+gcc -Wall $(pkg-config fuse3 --cflags) hexed.c -o hexed $(pkg-config fuse3 --libs)
+```
+```bash
+chmod +x hexed
+```
 
 ### c.
 
+Untuk menampilkan hasil output dengan `tree`
 
+![show output](assets/output.png)
 
 ### d.
 
 Setelah sukses convert, kita lihat log di `conversion.log`
 
-
+![show log_conversion](assets/log_conversion.png)
