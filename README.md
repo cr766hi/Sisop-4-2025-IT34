@@ -452,6 +452,7 @@ Ex: "docker exec [container-name] ls /antink_mount"
 Output: 
 test.txt  vsc.sifan  txt.nucmik
 
+Digunakan untuk: Membalik nama file berbahaya.
 ```BASH
 char* strrev(char* str) {
     if (!str || !*str) return str;
@@ -470,10 +471,10 @@ char* strrev(char* str) {
 
 Fungsi: Membalik string in-place.
 Contoh: "nafis" → "sifan"
-Digunakan untuk: Membalik nama file berbahaya.
+
 ![image](https://github.com/user-attachments/assets/52eaab7b-fcd0-4ffc-ac2a-8a549af73cf4)
 
-nafis = sifan
+nafis = sifan, 
 kimchun = nucmik
 
 dengan lognya :
