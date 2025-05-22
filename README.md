@@ -385,6 +385,52 @@ Setelah sukses convert, kita lihat log di `conversion.log`
 ## Soal 2
 
 ## Soal 3
+Nafis dan Kimcun merupakan dua mahasiswa anomali😱 yang paling tidak tahu sopan santun dan sangat berbahaya di antara angkatan 24. Maka dari itu, Pujo sebagai komting yang baik hati dan penyayang😍, memutuskan untuk membuat sebuah sistem pendeteksi kenakalan bernama Anti Napis Kimcun (AntiNK) untuk melindungi file-file penting milik angkatan 24. Pujo pun kemudian bertanya kepada Asisten bagaimana cara membuat sistem yang benar, para asisten pun merespon
 
 ### a. 
+Pujo harus membuat sistem AntiNK menggunakan Docker yang menjalankan FUSE dalam container terisolasi. Sistem ini menggunakan docker-compose untuk mengelola container antink-server (FUSE Func.) dan antink-logger (Monitoring Real-Time Log). Asisten juga memberitahu bahwa docker-compose juga memiliki beberapa komponen lain yaitu
+it24_host (Bind Mount -> Store Original File)
+antink_mount (Mount Point)
+antink-logs (Bind Mount -> Store Log)
+
+```bash
+version: '3.8'
+
+services:
+  antink-server:
+    build: .
+    container_name: soal_3-antink-server
+    privileged: true
+    devices:
+      - /dev/fuse:/dev/fuse
+    cap_add:
+      - SYS_ADMIN
+    security_opt:
+      - apparmor:unconfined
+    volumes:
+      - type: bind
+        source: ./it24_host
+        target: /it24_host
+        read_only: true
+      - type: bind
+        source: ./antink_mount
+        target: /antink_mount
+      - type: bind
+        source: ./antink-logs
+        target: /var/log
+    restart: unless-stopped
+
+  antink-logger:
+    image: ubuntu:latest
+    container_name: soal_3-antink-logger
+    depends_on:
+      - antink-server
+    volumes:
+      - type: bind
+        source: ./antink-logs
+        target: /var/log
+    command: ["tail", "-f", "/var/log/it24.log"]
+```
+
+
 
