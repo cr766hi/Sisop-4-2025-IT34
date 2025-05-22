@@ -381,3 +381,10 @@ Untuk menampilkan hasil output dengan `tree`
 Setelah sukses convert, kita lihat log di `conversion.log`
 
 ![show log_conversion](assets/log_conversion.png)
+
+## Soal 2
+
+## Soal 3
+
+### a. 
+
