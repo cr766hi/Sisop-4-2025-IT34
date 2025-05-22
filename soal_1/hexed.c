@@ -128,8 +128,8 @@ void auto_convert_all_hex() {
 void convert_and_log(const char *txt_path, const char *hex_data, size_t data_size) {
     char img_path[PATH_MAX];
 
-    char *txt_copy = strdup(txt_path);                  // ⬅️ simpan salinan
-    char *base_name = basename(txt_copy);               // ⬅️ ambil nama file dari path
+    char *txt_copy = strdup(txt_path);                  
+    char *base_name = basename(txt_copy);               
     char *dot = strrchr(base_name, '.');
     if (dot) *dot = '\0';
 
@@ -158,7 +158,7 @@ void convert_and_log(const char *txt_path, const char *hex_data, size_t data_siz
         }
     }
 
-    free(txt_copy); // ✅ bebasin string hasil strdup()
+    free(txt_copy); 
 }
 
 // Common getattr function
@@ -297,7 +297,7 @@ static struct fuse_operations dl_oper = {
 int main(int argc, char *argv[]) {
     umask(0);
 
-    // Konversi otomatis dilakukan di awal sebelum mount
+    // Convert
     auto_convert_all_hex();
 
     if (argc > 1 && strcmp(argv[1], "-downloads") == 0) {
