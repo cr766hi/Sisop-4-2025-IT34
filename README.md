@@ -479,7 +479,7 @@ kimchun = nucmik
 dengan lognya :
 ![image](https://github.com/user-attachments/assets/2f1001f9-1339-49e5-94b8-143a88b2338f)
 
-###c.
+### c.
 Dikarenakan dua anomali tersebut terkenal dengan kelicikannya, Pujo mempunyai ide bahwa isi dari file teks normal akan di enkripsi menggunakan ROT13 saat dibaca, sedangkan file teks berbahaya tidak di enkripsi. 
 Ex: "docker exec [container-name] cat /antink_mount/test.txt" 
 Output: 
@@ -501,13 +501,13 @@ ini berfungsi untuk mengenkripsi teks dengan chiper ROT13
 
 ![image](https://github.com/user-attachments/assets/49c6e412-00d9-46ec-976e-0051b7d2d856)
 
-###d. 
+### d. 
 Semua aktivitas dicatat dengan ke dalam log file /var/log/it24.log yang dimonitor secara real-time oleh container logger.
 
 buka termnial 1 dan log akan otomatis tercatat
 ![image](https://github.com/user-attachments/assets/495f7fdd-0763-4968-9a39-384299245d21)
 
-###e. 
+### e. 
 Semua perubahan file hanya terjadi di dalam container server jadi tidak akan berpengaruh di dalam direktori host. 
 ![image](https://github.com/user-attachments/assets/ac8b5485-2317-4284-8622-86d29ba531df)
 vs
