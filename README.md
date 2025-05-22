@@ -358,13 +358,16 @@ int main(int argc, char *argv[]) {
     return fuse_main(argc, argv, &doc_oper, NULL);
 }
 ```
-Kita compile filenya dan ubah permission dengan
+Kita compile, ubah permission, dan run dengan
 
 ```bash
 gcc -Wall $(pkg-config fuse3 --cflags) hexed.c -o hexed $(pkg-config fuse3 --libs)
 ```
 ```bash
 chmod +x hexed
+```
+```bash
+./hexed doc_mount
 ```
 
 ### c.
