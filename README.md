@@ -393,6 +393,8 @@ it24_host (Bind Mount -> Store Original File)
 antink_mount (Mount Point)
 antink-logs (Bind Mount -> Store Log)
 
+Pertama kita buat dahulu file docker-compose.yml dan berisikan code dibawah ini :
+
 ```bash
 version: '3.8'
 
@@ -408,17 +410,11 @@ services:
     security_opt:
       - apparmor:unconfined
     volumes:
-      - type: bind
-        source: ./it24_host
-        target: /it24_host
-        read_only: true
-      - type: bind
-        source: ./antink_mount
-        target: /antink_mount
-      - type: bind
-        source: ./antink-logs
-        target: /var/log
+      - ./it24_host:/it24_host:ro
+      - ./antink_mount:/antink_mount
+      - ./antink-logs:/var/log
     restart: unless-stopped
+    command: bash -c "/app/antink /antink_mount & tail -f /dev/null"
 
   antink-logger:
     image: ubuntu:latest
@@ -426,11 +422,103 @@ services:
     depends_on:
       - antink-server
     volumes:
-      - type: bind
-        source: ./antink-logs
-        target: /var/log
-    command: ["tail", "-f", "/var/log/it24.log"]
+      - ./antink-logs:/var/log
+    command: bash -c "while [ ! -f /var/log/it24.log ]; do sleep 1; done; tail -f /var/log/it24.log"
 ```
+
+Sebelum jalankan sistem pastikan :
+```bash
+mkdir -p it24_host antink_mount antink-logs
+chmod -R 777 antink_mount antink-logs 
+```
+
+Mekanisme Isolasi :
+
+File Asli: Disimpan di ./it24_host (host) → /it24_host (container, read-only)
+File Termodifikasi: Tampil di ./antink_mount (host) → /antink_mount (container)
+Log: Disimpan di ./antink-logs (host) → /var/log (container)
+
+Coba di jalankan :
+```bash
+docker-compose up --build
+```
+![image](https://github.com/user-attachments/assets/a87113cc-5535-461e-8461-aed591809547)
+
+lalu kita bisa menjalankan perintah lain pada terminal lain.
+
+### b. 
+Sistem harus mendeteksi file dengan kata kunci "nafis" atau "kimcun" dan membalikkan nama file tersebut saat ditampilkan. Saat file berbahaya (kimcun atau nafis) terdeteksi, sistem akan mencatat peringatan ke dalam log.
+Ex: "docker exec [container-name] ls /antink_mount" 
+Output: 
+test.txt  vsc.sifan  txt.nucmik
+
+```BASH
+char* strrev(char* str) {
+    if (!str || !*str) return str;
+    
+    int i = strlen(str) - 1, j = 0;
+    char ch;
+    while (i > j) {
+        ch = str[i];
+        str[i] = str[j];
+        str[j] = ch;
+        i--; j++;
+    }
+    return str;
+}
+```
+
+Fungsi: Membalik string in-place.
+Contoh: "nafis" → "sifan"
+Digunakan untuk: Membalik nama file berbahaya.
+![image](https://github.com/user-attachments/assets/52eaab7b-fcd0-4ffc-ac2a-8a549af73cf4)
+
+nafis = sifan
+kimchun = nucmik
+
+dengan lognya :
+![image](https://github.com/user-attachments/assets/2f1001f9-1339-49e5-94b8-143a88b2338f)
+
+###c.
+Dikarenakan dua anomali tersebut terkenal dengan kelicikannya, Pujo mempunyai ide bahwa isi dari file teks normal akan di enkripsi menggunakan ROT13 saat dibaca, sedangkan file teks berbahaya tidak di enkripsi. 
+Ex: "docker exec [container-name] cat /antink_mount/test.txt" 
+Output: 
+enkripsi teks asli
+
+```bash
+void rot13(char *str) {
+    for (; *str; str++) {
+        if (*str >= 'a' && *str <= 'z') {
+            *str = ((*str - 'a' + 13) % 26) + 'a';
+        } else if (*str >= 'A' && *str <= 'Z') {
+            *str = ((*str - 'A' + 13) % 26) + 'A';
+        }
+    }
+}
+```
+
+ini berfungsi untuk mengenkripsi teks dengan chiper ROT13
+
+![image](https://github.com/user-attachments/assets/49c6e412-00d9-46ec-976e-0051b7d2d856)
+
+###d. 
+Semua aktivitas dicatat dengan ke dalam log file /var/log/it24.log yang dimonitor secara real-time oleh container logger.
+
+buka termnial 1 dan log akan otomatis tercatat
+![image](https://github.com/user-attachments/assets/495f7fdd-0763-4968-9a39-384299245d21)
+
+###e. 
+Semua perubahan file hanya terjadi di dalam container server jadi tidak akan berpengaruh di dalam direktori host. 
+![image](https://github.com/user-attachments/assets/ac8b5485-2317-4284-8622-86d29ba531df)
+vs
+![image](https://github.com/user-attachments/assets/4d631997-9fa5-42df-906f-370141a2ddd1)
+
+
+
+
+
+
+
 
 
 
