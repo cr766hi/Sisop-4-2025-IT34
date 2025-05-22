@@ -55,32 +55,99 @@ static void write_log(const char *path) {
     fclose(logfile);
 }
 
-// Function to log convert hex to image and log conversion
-static void convert_and_log(const char *txt_path, const char *hex_data, size_t data_size) {
-    // Generate output filename
+void convert_and_log(const char *txt_path, const char *hex_data, size_t data_size);
+
+void auto_convert_all_hex() {
+    DIR *dp;
+    struct dirent *de;
+
+    const char *input_dir = "samples";
+    char filepath[PATH_MAX];
+
+    dp = opendir(input_dir);
+    if (!dp) {
+        perror("Failed to open samples directory");
+        return;
+    }
+
+    while ((de = readdir(dp)) != NULL) {
+        if (de->d_type == DT_REG && strstr(de->d_name, ".txt")) {
+            snprintf(filepath, sizeof(filepath), "%s/%s", input_dir, de->d_name);
+
+            FILE *f = fopen(filepath, "r");
+            if (!f) continue;
+
+            fseek(f, 0, SEEK_END);
+            long fsize = ftell(f);
+            rewind(f);
+
+            char *hex = malloc(fsize + 1);
+            if (!hex) {
+                fclose(f);
+                continue;
+            }
+
+            size_t read_len = fread(hex, 1, fsize, f);
+            hex[read_len] = '\0';
+            fclose(f);
+
+            if (read_len == 0 || strlen(hex) % 2 != 0) {
+                free(hex);
+                continue;
+            }
+
+            size_t len = strlen(hex) / 2;
+            char *bin = malloc(len);
+            if (!bin) {
+                free(hex);
+                continue;
+            }
+
+            int error = 0;
+            for (size_t i = 0; i < len; i++) {
+                if (sscanf(hex + 2 * i, "%2hhx", &bin[i]) != 1) {
+                    error = 1;
+                    break;
+                }
+            }
+
+            if (!error) {
+                char fullpath[PATH_MAX];
+                snprintf(fullpath, sizeof(fullpath), "%s/%s", input_dir, de->d_name);
+                convert_and_log(fullpath, bin, len);
+            }
+
+            free(hex);
+            free(bin);
+        }
+    }
+
+    closedir(dp);
+}
+
+void convert_and_log(const char *txt_path, const char *hex_data, size_t data_size) {
     char img_path[PATH_MAX];
-    char *base_name = basename(strdup(txt_path));
+
+    char *txt_copy = strdup(txt_path);                  // ⬅️ simpan salinan
+    char *base_name = basename(txt_copy);               // ⬅️ ambil nama file dari path
     char *dot = strrchr(base_name, '.');
-    if (dot) *dot = '\0';  // Remove extension
-    
+    if (dot) *dot = '\0';
+
     time_t now = time(NULL);
     struct tm *tm = localtime(&now);
-    
-    snprintf(img_path, sizeof(img_path), "image/%s_image_%04d-%02d-%02d_%02d:%02d:%02d.png",
+
+    snprintf(img_path, sizeof(img_path), "samples/image/%s_image_%04d-%02d-%02d_%02d:%02d:%02d.png",
              base_name,
              tm->tm_year + 1900, tm->tm_mon + 1, tm->tm_mday,
              tm->tm_hour, tm->tm_min, tm->tm_sec);
-    
-    // Create image directory if not exists
-    mkdir("image", 0755);
-    
-    // Write image file (actual conversion would go here)
+
+    mkdir("samples/image", 0755);
+
     FILE *img = fopen(img_path, "wb");
     if (img) {
         fwrite(hex_data, 1, data_size, img);
         fclose(img);
-        
-        // Log conversion
+
         FILE *log = fopen("conversion.log", "a");
         if (log) {
             fprintf(log, "[%04d-%02d-%02d][%02d:%02d:%02d]: Successfully converted hexadecimal text %s to %s.\n",
@@ -90,7 +157,8 @@ static void convert_and_log(const char *txt_path, const char *hex_data, size_t d
             fclose(log);
         }
     }
-    free(base_name);
+
+    free(txt_copy); // ✅ bebasin string hasil strdup()
 }
 
 // Common getattr function
@@ -228,7 +296,10 @@ static struct fuse_operations dl_oper = {
 
 int main(int argc, char *argv[]) {
     umask(0);
-    
+
+    // Konversi otomatis dilakukan di awal sebelum mount
+    auto_convert_all_hex();
+
     if (argc > 1 && strcmp(argv[1], "-downloads") == 0) {
         argv[1] = argv[0];
         return fuse_main(argc - 1, argv + 1, &dl_oper, NULL);
