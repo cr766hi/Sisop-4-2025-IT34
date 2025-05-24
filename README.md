@@ -384,6 +384,257 @@ Setelah sukses convert, kita lihat log di `conversion.log`
 
 ## Soal 2
 
+Kita diminta untuk membuat sebuah sistem file virtual menggunakan FUSE (Filesystem in Userspace) yang dapat membantu seorang ilmuwan untuk menyatukan pecahan data dari robot perawat legendaris, Baymax. File-file tersebut terfragmentasi menjadi 14 bagian kecil (masing-masing 1 KB) dengan nama Baymax.jpeg.000 hingga Baymax.jpeg.013 yang tersimpan dalam direktori relics. Sistem file ini harus menampilkan file utuh Baymax.jpeg di direktori mount, serta menangani operasi seperti membaca, menulis, membuat, dan menghapus file dengan memecah atau menggabungkan file secara otomatis. Selain itu, semua aktivitas pengguna harus dicatat dalam file log activity.log.
+
+### Perintah pada terminal
+
+Pertama, unduh file zip menggunakan perintah berikut:
+```bash
+curl -L -o Baymax.zip "https://drive.google.com/uc?export=download&id=1MHVhFT57Wa9Zcx69Bv9j5ImHc9rXMH1c"
+```
+
+Kemudian, unzip file
+```bash
+unzip Baymax.zip -d relics
+```
+
+Buat direktori mount_dir dan relics jika belum ada:
+```bash
+mkdir -p mount_dir relics
+```
+
+Untuk kompilasi kode gunakan perintah:
+```bash
+gcc -Wall baymax.c -o baymax `pkg-config --cflags --libs fuse`
+```
+
+Untuk menjalankan sistem FUSE:
+```bash
+./baymax -f mount_dir
+```
+
+Untuk menghentikan FUSE:
+```bash
+fusermount -u mount_dir
+```
+
+
+### Berikut adalah kode untuk operasi dasar dalam FUSE:
+
+Mengembalikan atribut file atau direktori:
+```bash
+static int baymax_getattr(const char *path, struct stat *st) {
+    memset(st, 0, sizeof(struct stat));
+
+    if (strcmp(path, "/") == 0) {
+        st->st_mode = S_IFDIR | 0755;
+        st->st_nlink = 2;
+        return 0;
+    } else if (strcmp(path, "/Baymax.jpeg") == 0) {
+        st->st_mode = S_IFREG | 0644;
+        st->st_nlink = 1;
+        st->st_size = 14 * 1024;
+        return 0;
+    }
+
+    return -ENOENT;
+}
+```
+
+Menampilkan isi direktori (hanya menampilkan Baymax.jpeg di root direktori):
+```bash
+static int baymax_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi) {
+    (void) offset;
+    (void) fi;
+
+    if (strcmp(path, "/") == 0) {
+        filler(buf, ".", NULL, 0);
+        filler(buf, "..", NULL, 0);
+        filler(buf, "Baymax.jpeg", NULL, 0);
+        return 0;
+    }
+    return -ENOENT;
+}
+```
+
+Membuka file Baymax.jpeg:
+```bash
+static int baymax_open(const char *path, struct fuse_file_info *fi) {
+    if (strcmp(path, "/Baymax.jpeg") != 0) {
+        return -ENOENT;
+    }
+    return 0;
+}
+```
+
+Membaca dan menggabungkan data dari 14 pecahan file saat Baymax.jpeg dibaca:
+```bash
+static int baymax_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi) {
+    if (strcmp(path, "/Baymax.jpeg") != 0) {
+        return -ENOENT;
+    }
+
+    struct stat st;
+    if (baymax_getattr(path, &st) != 0) {
+        return -ENOENT;
+    }
+
+    FILE *fragments[14];
+    char fragment_path[256];
+
+    for (int i = 0; i < 14; i++) {
+        snprintf(fragment_path, sizeof(fragment_path), "%s/Baymax.jpeg.%03d", relics_path, i);
+        fragments[i] = fopen(fragment_path, "rb");
+        if (!fragments[i]) {
+            for (int j = 0; j < i; j++) {
+                fclose(fragments[j]);
+            }
+            return -EIO;
+        }
+    }
+
+    size_t total_read = 0;
+    char temp_buf[1024];
+
+    for (int i = 0; i < 14 && size > 0; i++) {
+        fseek(fragments[i], 0, SEEK_SET);
+        size_t frag_size = fread(temp_buf, 1, sizeof(temp_buf), fragments[i]);
+
+        size_t start = (offset >= i * 1024) ? offset - i * 1024 : 0;
+        size_t end = (offset + size <= (i + 1) * 1024) ? frag_size : (offset + size) - i * 1024;
+
+        if (start < frag_size) {
+            size_t copy_size = end - start;
+            memcpy(buf + total_read, temp_buf + start, copy_size);
+            total_read += copy_size;
+            size -= copy_size;
+            offset += copy_size;
+        }
+    }
+
+    for (int i = 0; i < 14; i++) {
+        fclose(fragments[i]);
+    }
+
+if (offset == 0 && size == st.st_size) {
+        log_activity("COPY", path + 1);
+    }
+    return total_read;
+}
+```
+
+Menangani pembuatan file baru dan memecahnya menjadi pecahan 1 KB:
+```bash
+static int baymax_create(const char *path, mode_t mode, struct fuse_file_info *fi) {
+    if (strcmp(path, "/Baymax.jpeg") == 0) {
+        return -EPERM;
+    }
+
+    char full_path[256];
+    snprintf(full_path, sizeof(full_path), "%s%s", relics_path, path);
+
+    log_activity("CREATE", path + 1);
+
+    return 0;
+}
+```
+
+Menulis data ke file baru dan memecahnya menjadi pecahan 1 KB:
+```bash
+static int baymax_write(const char *path, const char *buf, size_t size, off_t offset, struct fuse_file_info *fi) {
+
+struct stat st;
+    if (stat(relics_path, &st) != 0 || !S_ISDIR(st.st_mode)) {
+        return -ENOENT;
+    }
+
+    if (strcmp(path, "/Baymax.jpeg") == 0) {
+        return -EPERM;
+    }
+
+    char fragment_path[256];
+    FILE *fragment_file;
+    size_t total_written = 0;
+    int fragment_number = 0;
+
+    while (size > 0) {
+        snprintf(fragment_path, sizeof(fragment_path), "%s/%s.%03d", relics_path, path + 1, fragment_number);
+        fragment_file = fopen(fragment_path, "wb");
+        if (!fragment_file) {
+            return -EIO;
+        }
+
+        size_t chunk_size = (size > 1024) ? 1024 : size;
+        size_t written = fwrite(buf + total_written, 1, chunk_size, fragment_file);
+        fclose(fragment_file);
+
+        if (written != chunk_size) {
+            return -EIO;
+        }
+
+        total_written += written;
+        size -= written;
+        fragment_number++;
+    }
+
+    char log_message[512];
+    snprintf(log_message, sizeof(log_message), "%s -> %s.%03d (total %d fragments)", 
+             path + 1, path + 1, fragment_number - 1, fragment_number);
+    log_activity("WRITE", log_message);
+
+    return total_written;
+}
+```
+
+Menghapus file dan semua pecahannya:
+```bash
+static int baymax_unlink(const char *path) {
+    if (strcmp(path, "/Baymax.jpeg") == 0) {
+        return -EPERM;
+    }
+
+    char fragment_path[256];
+    int fragment_number = 0;
+    int deleted_count = 0;
+
+    while (1) {
+        snprintf(fragment_path, sizeof(fragment_path), "%s/%s.%03d", relics_path, path + 1, fragment_number);
+        if (remove(fragment_path) != 0) {
+            if (errno == ENOENT && fragment_number == 0) {
+                return -ENOENT;
+            }
+            break;
+        }
+        deleted_count++;
+        fragment_number++;
+    }
+
+    char log_message[512];
+    snprintf(log_message, sizeof(log_message), "%s.%03d - %s.%03d", 
+             path + 1, 0, path + 1, fragment_number - 1);
+    log_activity("DELETE", log_message);
+
+    return 0;
+}
+```
+
+Kode untuk bagian activity log:
+```bash
+static void log_activity(const char *action, const char *filename) {
+    time_t now = time(NULL);
+    char timestamp[64];
+    strftime(timestamp, sizeof(timestamp), "[%Y-%m-%d %H:%M:%S]", localtime(&now));
+    
+    FILE *log = fopen("activity.log", "a");
+    if (log) {
+        fprintf(log, "%s %s: %s\n", timestamp, action, filename);
+        fclose(log);
+    }
+}
+```
+
+Karena saya belum berhasil untuk connect ke direktori mount_dir nya, jadi saya masih belum mendapatkan output dari hasil uji coba dengan operasi dasar di atas.
+
 ## Soal 3
 Nafis dan Kimcun merupakan dua mahasiswa anomali😱 yang paling tidak tahu sopan santun dan sangat berbahaya di antara angkatan 24. Maka dari itu, Pujo sebagai komting yang baik hati dan penyayang😍, memutuskan untuk membuat sebuah sistem pendeteksi kenakalan bernama Anti Napis Kimcun (AntiNK) untuk melindungi file-file penting milik angkatan 24. Pujo pun kemudian bertanya kepada Asisten bagaimana cara membuat sistem yang benar, para asisten pun merespon
 
